@@ -1,6 +1,7 @@
 package nomlishgo
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -12,23 +13,27 @@ import (
 )
 
 const (
-	NOMLISH_URL     = "https://racing-lagoon.info/nomu/translate.php"
-	NOM_XPATH_TOKEN = "//input[@name='token']"
-	NOM_XPATH_AFTER = "//textarea[@name='after1']"
-	NOM_XPATH_URL   = "//div[@style='margin:5px;text-align:center']/a"
-	NOM_XPATH_PER   = "/html/body/form/div[2]/div[4]/div[2]/div"
+	nomlishUrl    = "https://racing-lagoon.info/nomu/translate.php"
+	nomXpathToken = "//input[@name='token']"
+	nomXpathAfter = "//textarea[@name='after1']"
+	nomXpathUrl   = "//div[@style='margin:5px;text-align:center']/a"
+	nomXpathPer   = "/html/body/form/div[2]/div[4]/div[2]/div"
 )
 
 type NomlishResult struct {
 	Before     string
 	After      string
 	Url        string
-	Url_lines  string
+	UrlLines   string
 	Percentage float64
 }
 
-func ToNomlish(input string, level int) (NomlishResult, error) {
-	result := NomlishResult{Before: input}
+func ToNomlish(text string, level int) (*NomlishResult, error) {
+	if len(text) == 0 {
+		return nil, errors.New("input text is empty")
+	}
+
+	result := &NomlishResult{Before: text}
 
 	// cookieを有効に
 	jar, err := cookiejar.New(&cookiejar.Options{})
@@ -38,7 +43,7 @@ func ToNomlish(input string, level int) (NomlishResult, error) {
 	http.DefaultClient.Jar = jar
 
 	// ノムリッシュ翻訳のページへ
-	resp, err := http.Get(NOMLISH_URL)
+	resp, err := http.Get(nomlishUrl)
 	if err != nil {
 		return result, err
 	}
@@ -51,15 +56,15 @@ func ToNomlish(input string, level int) (NomlishResult, error) {
 	}
 
 	// Token取得
-	node := htmlquery.FindOne(doc, NOM_XPATH_TOKEN)
+	node := htmlquery.FindOne(doc, nomXpathToken)
 	token := htmlquery.SelectAttr(node, "value")
 
 	// POST
 	resp, err = http.PostForm(
-		NOMLISH_URL,
+		nomlishUrl,
 		url.Values{"options": {"nochk"},
 			"transbtn": {"翻訳"},
-			"before":   {input},
+			"before":   {text},
 			"level":    {strconv.Itoa(getNomlishLevel(level))},
 			"token":    {token},
 		},
@@ -80,23 +85,23 @@ func ToNomlish(input string, level int) (NomlishResult, error) {
 	}
 
 	// After
-	after := htmlquery.Find(doc, NOM_XPATH_AFTER)
+	after := htmlquery.Find(doc, nomXpathAfter)
 	for _, value := range after {
 		result.After = htmlquery.InnerText(value)
 	}
 
 	// 翻訳結果URL
-	links := htmlquery.Find(doc, NOM_XPATH_URL)
+	links := htmlquery.Find(doc, nomXpathUrl)
 	for _, v := range links {
 		if htmlquery.InnerText(v) == "翻訳結果ページ(通常)" {
 			result.Url = "https://racing-lagoon.info" + htmlquery.SelectAttr(v, "href")
 		} else if htmlquery.InnerText(v) == "翻訳結果ページ(行数あり)" {
-			result.Url_lines = "https://racing-lagoon.info" + htmlquery.SelectAttr(v, "href")
+			result.UrlLines = "https://racing-lagoon.info" + htmlquery.SelectAttr(v, "href")
 		}
 	}
 
 	// 翻訳率
-	perc := htmlquery.Find(doc, NOM_XPATH_PER)
+	perc := htmlquery.Find(doc, nomXpathPer)
 	for _, v := range perc {
 		// Remove some chars
 		str := strings.ReplaceAll(v.LastChild.Data, "\t", "")
@@ -114,7 +119,7 @@ func ToNomlish(input string, level int) (NomlishResult, error) {
 }
 
 func getNomlishLevel(level int) int {
-	if level < 1 && level > 4 {
+	if level < 1 || level > 4 {
 		level = 2
 	}
 	return level

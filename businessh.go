@@ -1,6 +1,7 @@
 package nomlishgo
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -12,9 +13,9 @@ import (
 )
 
 const (
-	BUSINESSH_URL   = "https://bizwd.net"
-	BUS_XPATH_AFTER = "//textarea[@name='after']"
-	BUS_XPATH_PER   = "/html/body/div[2]/div[4]/form/div[2]/text()"
+	businesshUrl  = "https://bizwd.net"
+	busXpathAfter = "//textarea[@name='after']"
+	busXpathPer   = "/html/body/div[2]/div[4]/form/div[2]/text()"
 )
 
 type BusinesshResult struct {
@@ -23,8 +24,12 @@ type BusinesshResult struct {
 	Percentage float64
 }
 
-func ToBusinessh(input string, level int) (BusinesshResult, error) {
-	result := BusinesshResult{Before: input}
+func ToBusinessh(text string, level int) (*BusinesshResult, error) {
+	if len(text) == 0 {
+		return nil, errors.New("input text is empty")
+	}
+
+	result := &BusinesshResult{Before: text}
 
 	// cookieを有効に
 	jar, err := cookiejar.New(&cookiejar.Options{})
@@ -35,10 +40,10 @@ func ToBusinessh(input string, level int) (BusinesshResult, error) {
 
 	// POST
 	resp, err := http.PostForm(
-		BUSINESSH_URL,
+		businesshUrl,
 		url.Values{"options": {"nochk"},
 			"transbtn": {"翻訳"},
-			"before":   {input},
+			"before":   {text},
 			"level":    {strconv.Itoa(getBusinesshLevel(level))},
 			"after":    {""},
 		},
@@ -59,13 +64,13 @@ func ToBusinessh(input string, level int) (BusinesshResult, error) {
 	}
 
 	// After
-	after := htmlquery.Find(doc, BUS_XPATH_AFTER)
+	after := htmlquery.Find(doc, busXpathAfter)
 	for _, v := range after {
 		result.After = htmlquery.InnerText(v)
 	}
 
 	// 翻訳率
-	perc := htmlquery.Find(doc, BUS_XPATH_PER)
+	perc := htmlquery.Find(doc, busXpathPer)
 	for _, v := range perc {
 		if strings.Contains(v.Data, "翻訳率") {
 			// Remove some chars
@@ -86,7 +91,7 @@ func ToBusinessh(input string, level int) (BusinesshResult, error) {
 }
 
 func getBusinesshLevel(level int) int {
-	if level < 1 && level > 2 {
+	if level < 1 || level > 2 {
 		level = 1
 	}
 	return level
